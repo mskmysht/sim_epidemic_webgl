@@ -1,7 +1,0 @@
-{
-    "type": "commonjs",
-    "dependencies": {
-        "http-server": "^0.12.3",
-        "request": "^2.88.2"
-    }
-}
