@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/5.3.3/pixi.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+
+<body>
+  <div id="app">
+    <v-app>
+      <v-main>
+        <v-container fluid>
+          <v-row align="center">
+            <v-col cols="3">
+              <v-select :items="items" v-model="selected" item-text="name" return-object label="Data List" dense
+                v-on:change="listChanged()"></v-select>
+            </v-col>
+            <v-col cols="auto">
+              <v-btn id="load" :disabled="!isEnableLoading" v-on:click="loadData()">load data</v-btn>
+              <v-btn id="pause_resume" :disabled="!isLoaded" v-on:click="pauseOrResume()">{{pauseOrResumeName}}</v-btn>
+              <v-btn id="step" :disabled="!isLoaded">step</v-btn>
+            </v-col>
+            <v-col cols="2">
+              <v-text-field v-model="interval" type="number" label="interval"></v-text-field>
+            </v-col>
+          </v-row>
+          <v-row align="center">
+            <v-col>
+              <canvas id="pixi"></canvas>
+            </v-col>
+          </v-row>
+        </v-container>
+      </v-main>
+    </v-app>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.js"></script>
+  <script>
+    Vue.config.productionTip = false
+    const vue = new Vue({
+      el: '#app',
+      vuetify: new Vuetify(),
+      data: () => ({
+        items: [],
+        selected: null,
+        isEnableLoading: false,
+        isLoaded: false,
+        pauseOrResumeName: 'start',
+        isPaused: false,
+        interval: 20
+      }),
+      async beforeMount() {
+        const res = await axios.get('/data/list.json')
+        this.items = res.data.list
+      },
+      methods: {
+        listChanged() {
+          this.isEnableLoading = true
+        },
+        loadData() {
+          console.log(this.selected.name);
+          this.pauseOrResumeName = 'start';
+        },
+        pauseOrResume() {
+          this.isPaused = !this.isPaused
+          this.pauseOrResumeName = this.isPaused ? 'Resume' : 'Pause'
+        }
+      }
+    })
+
+    // 外部(canvas外)インターフェースの取得
+    const ldBtn = document.getElementById('load');
+    const prBtn = document.getElementById('pause_resume');
+    const stepBtn = document.getElementById('step');
+
+    // Bitmap Font設定
+    PIXI.BitmapFont.from(
+      'myBMfont', // BitmapTextの`fontName`として使用する登録名
+      {
+        // ビットマップフォントの基本スタイルを指定
+        fill: "#AAFFAA",
+        fontSize: 40,
+      }
+    );
+
+    //-------------------
+    // Application設定
+    //-------------------
+
+    // Applicationの作成
+    const app = new PIXI.Application({
+      width: 600,
+      height: 500,
+      backgroundColor: 0x555555,
+      // transparent: true,
+      view: document.getElementById('pixi')
+    });
+
+    const field = new PIXI.Container();
+    field.scale.x = 0.05;
+    field.scale.y = 0.05;
+    app.stage.addChild(field);
+
+    //-------------------
+    // グローバルオブジェクト
+    //-------------------
+    const populationNumber = 10000;
+    let populationSeq = [];
+    let currentPopulation = [];
+    let nextPopulation = [];
+
+    //-------------------
+    // オブジェクト設定
+    //-------------------
+    function createNode(x, y) {
+      // オブジェクトの生成
+      const dot = new PIXI.Graphics();
+      dot.width = 20;
+      dot.height = 20;
+      dot.x = x;
+      dot.y = y;
+
+      // オブジェクトの描画設定
+      dot.beginFill(0xffffff);
+      dot.drawRect(0, 0, 20, 20);
+      dot.endFill();
+
+      return dot;
+    }
+
+    function initialize() {
+      for (let i = 0; i < populationNumber; i++) {
+        field.addChild(createNode(0, 0));
+      }
+    }
+
+    function updatePopulation() {
+      currentPopulation = nextPopulation
+      nextPopulation = populationSeq.shift();
+      if (nextPopulation) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    const log = new PIXI.BitmapText('test', { fontName: "myBMfont", fontSize: 15, align: "right" });
+    app.stage.addChild(log);
+    log.text = 0;
+
+    //-------------------
+    // 初期化処理
+    //-------------------
+    initialize();
+    app.ticker.stop()
+    app.ticker.add(loop)
+
+    //-------------------
+    // アニメーション処理
+    //-------------------
+    let dt = 0;
+    function loop(delta) {
+      log.text = `${dt}`;
+      if (dt >= vue.interval) {
+        dt = 0;
+        stepLocations();
+      }
+      dt += delta;
+    }
+
+    function stepLocations() {
+      if (updatePopulation()) {
+        updateLocations();
+      }
+    }
+
+    function updateLocations() {
+      currentPopulation.forEach((v, i) => {
+        const n = field.getChildAt(i)
+        n.x = v[0];
+        n.y = v[1];
+      })
+    }
+
+    //-------------------
+    // イベント処理
+    //-------------------
+    // load button
+    ldBtn.addEventListener('click', async event => {
+      app.ticker.stop();
+
+      populationSeq = []
+
+      for (let i = 0; i < vue.selected.count; i++) {
+        const res = await axios.get(`/data/${vue.selected.name}/${i}.json`);
+        populationSeq.push(res.data);
+      }
+
+      currentPopulation = populationSeq[0];
+      nextPopulation = populationSeq[1];
+      updateLocations();
+      app.ticker.update();
+
+      vue.isLoaded = true;
+    })
+
+    // pause/resume button
+    prBtn.addEventListener('click', event => {
+      if (app.ticker.started) {
+        app.ticker.stop();
+      } else {
+        app.ticker.start();
+      }
+    })
+
+    // step button
+    stepBtn.addEventListener('click', event => {
+      stepLocations();
+      app.ticker.update();
+    })
+
+    window.addEventListener('beforeunload', event => {
+      field.removeChildren();
+      console.log('reload');
+    }, false);
+
+  </script>
+</body>
+
+</html>
