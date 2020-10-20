@@ -115,11 +115,15 @@
     let populationSeq = [];
     let currentPopulation = [];
 
+    const log = new PIXI.BitmapText('test', { fontName: "myBMfont", fontSize: 15, align: "right" });
+    app.stage.addChild(log);
+    log.text = 0;
+
     //-------------------
-    // オブジェクト設定
+    // 各種ユーティリティ
     //-------------------
+    // オブジェクトの生成
     function createNode(x, y) {
-      // オブジェクトの生成
       const dot = new PIXI.Graphics();
       dot.width = 20;
       dot.height = 20;
@@ -134,12 +138,14 @@
       return dot;
     }
 
+    // 初期化処理
     function initialize() {
       for (let i = 0; i < populationNumber; i++) {
         field.addChild(createNode(0, 0));
       }
     }
 
+    // 次の人工の読み込み
     function updatePopulation() {
       if (populationSeq.length > 0) {
         currentPopulation = populationSeq.shift();
@@ -149,9 +155,21 @@
       }
     }
 
-    const log = new PIXI.BitmapText('test', { fontName: "myBMfont", fontSize: 15, align: "right" });
-    app.stage.addChild(log);
-    log.text = 0;
+    // 位置の更新
+    function updateLocations() {
+      currentPopulation.forEach((v, i) => {
+        const n = field.getChildAt(i)
+        n.x = v[0];
+        n.y = v[1];
+      })
+    }
+
+    // 人工の更新と位置の更新
+    function stepLocations() {
+      if (updatePopulation()) {
+        updateLocations();
+      }
+    }
 
     //-------------------
     // 初期化処理
@@ -171,20 +189,6 @@
         stepLocations();
       }
       dt += delta;
-    }
-
-    function stepLocations() {
-      if (updatePopulation()) {
-        updateLocations();
-      }
-    }
-
-    function updateLocations() {
-      currentPopulation.forEach((v, i) => {
-        const n = field.getChildAt(i)
-        n.x = v[0];
-        n.y = v[1];
-      })
     }
 
     //-------------------
