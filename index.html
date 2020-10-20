@@ -114,7 +114,6 @@
     const populationNumber = 10000;
     let populationSeq = [];
     let currentPopulation = [];
-    let nextPopulation = [];
 
     //-------------------
     // オブジェクト設定
@@ -142,9 +141,8 @@
     }
 
     function updatePopulation() {
-      currentPopulation = nextPopulation
-      nextPopulation = populationSeq.shift();
-      if (nextPopulation) {
+      if (populationSeq.length > 0) {
+        currentPopulation = populationSeq.shift();
         return true;
       } else {
         return false;
@@ -203,8 +201,7 @@
         populationSeq.push(res.data);
       }
 
-      currentPopulation = populationSeq[0];
-      nextPopulation = populationSeq[1];
+      updatePopulation();
       updateLocations();
       app.ticker.update();
 
