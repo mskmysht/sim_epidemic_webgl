@@ -16,222 +16,92 @@
   <div id="app">
     <v-app>
       <v-main>
-        <v-container fluid>
-          <v-row align="center">
-            <v-col cols="3">
-              <v-select :items="items" v-model="selected" item-text="name" return-object label="Data List" dense
-                v-on:change="listChanged()"></v-select>
-            </v-col>
-            <v-col cols="auto">
-              <v-btn id="load" :disabled="!isEnableLoading" v-on:click="loadData()">load data</v-btn>
-              <v-btn id="pause_resume" :disabled="!isLoaded" v-on:click="pauseOrResume()">{{pauseOrResumeName}}</v-btn>
-              <v-btn id="step" :disabled="!isLoaded">step</v-btn>
-            </v-col>
-            <v-col cols="2">
-              <v-text-field v-model="interval" type="number" label="interval"></v-text-field>
+        <v-container>
+          <v-row no-gutters justify="center">
+            <v-col my="0" lg="9" md="11" sm="10" align-self="center">
+              <v-row>
+                <v-col>
+                  <v-select :items="presetWorlds" v-model="newWorld" item-text="name" return-object label="Data List">
+                  </v-select>
+                </v-col>
+                <v-col align-self="center" class="col-auto">
+                  <v-btn :disabled="!newWorld" color="primary" @click="addPanel()">add</v-btn>
+                </v-col>
+              </v-row>
             </v-col>
           </v-row>
-          <v-row align="center">
-            <v-col>
-              <canvas id="pixi"></canvas>
+          <v-row justify="center">
+            <v-col lg="9" md="11" sm="10" v-for="(world, i) in worlds" :key="`world-${world.name}`">
+              <world-panel :world="world" width="500px" height="300px" @created="canvas => createWorld(canvas, world)"
+                @pause-or-resume="pauseOrResumeWorld(world)" @step="stepWorld(world)" @reset="resetWorld(world)"
+                @close="deleteWorld(i, world)">
+              </world-panel>
             </v-col>
           </v-row>
         </v-container>
       </v-main>
     </v-app>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+  <script src="windowPanel.js"></script>
+  <script src="worldPanel.js"></script>
   <script>
     Vue.config.productionTip = false
     const vue = new Vue({
       el: '#app',
       vuetify: new Vuetify(),
       data: () => ({
-        items: [],
-        selected: null,
-        isEnableLoading: false,
-        isLoaded: false,
-        pauseOrResumeName: 'start',
-        isPaused: false,
-        interval: 20
+        worlds: [],
+        presetWorlds: [],
+        newWorld: null,
+        windowObj: {}
       }),
       async beforeMount() {
-        const res = await axios.get('/data/list.json')
-        this.items = res.data.list
+        const res = await axios.get('/data/list.json');
+        this.presetWorlds = res.data.list;
+        window.addEventListener('beforeunload', event => {
+          console.log('reload');
+          for (const key in this.windowObj) {
+            if (this.windowObj.hasOwnProperty(key)) {
+              const window = this.windowObj[key];
+              window.finalize();
+            }
+          }
+        }, false);
       },
       methods: {
-        listChanged() {
-          this.isEnableLoading = true
+        addPanel() {
+          this.worlds.unshift(this.newWorld);
+          this.presetWorlds.splice(this.presetWorlds.indexOf(this.newWorld), 1);
+          this.newWorld = null;
         },
-        loadData() {
-          console.log(this.selected.name);
-          this.pauseOrResumeName = 'start';
+        createWorld(canvas, world) {
+          console.log('created', world.name, canvas);
+          this.windowObj[world.name] = new WindowPanel(canvas, world, 600, 500);
+          this.windowObj[world.name].initialize();
         },
-        pauseOrResume() {
-          this.isPaused = !this.isPaused
-          this.pauseOrResumeName = this.isPaused ? 'Resume' : 'Pause'
+        pauseOrResumeWorld(world) {
+          console.log('pause');
+          this.windowObj[world.name].pauseOrResume();
+        },
+        stepWorld(world) {
+          console.log('step', world.name);
+          this.windowObj[world.name].step();
+        },
+        resetWorld(world) {
+          console.log('reset', world.name);
+          this.windowObj[world.name].reset();
+        },
+        deleteWorld(index, world) {
+          console.log('close', world.name);
+          this.presetWorlds.push(world);
+          this.worlds.splice(index, 1);
+          this.windowObj[world.name].finalize();
+          delete this.windowObj[world.name];
         }
       }
     })
-
-    // 外部(canvas外)インターフェースの取得
-    const ldBtn = document.getElementById('load');
-    const prBtn = document.getElementById('pause_resume');
-    const stepBtn = document.getElementById('step');
-
-    // Bitmap Font設定
-    PIXI.BitmapFont.from(
-      'myBMfont', // BitmapTextの`fontName`として使用する登録名
-      {
-        // ビットマップフォントの基本スタイルを指定
-        fill: "#AAFFAA",
-        fontSize: 40,
-      }
-    );
-
-    //-------------------
-    // Application設定
-    //-------------------
-
-    // Applicationの作成
-    const app = new PIXI.Application({
-      width: 600,
-      height: 500,
-      backgroundColor: 0x555555,
-      // transparent: true,
-      view: document.getElementById('pixi')
-    });
-
-    const field = new PIXI.Container();
-    field.scale.x = 0.05;
-    field.scale.y = 0.05;
-    app.stage.addChild(field);
-
-    //-------------------
-    // グローバルオブジェクト
-    //-------------------
-    const populationNumber = 10000;
-    let populationSeq = [];
-    let currentPopulation = [];
-
-    const log = new PIXI.BitmapText('test', { fontName: "myBMfont", fontSize: 15, align: "right" });
-    app.stage.addChild(log);
-    log.text = 0;
-
-    //-------------------
-    // 各種ユーティリティ
-    //-------------------
-    // オブジェクトの生成
-    function createNode(x, y) {
-      const dot = new PIXI.Graphics();
-      dot.width = 20;
-      dot.height = 20;
-      dot.x = x;
-      dot.y = y;
-
-      // オブジェクトの描画設定
-      dot.beginFill(0xffffff);
-      dot.drawRect(0, 0, 20, 20);
-      dot.endFill();
-
-      return dot;
-    }
-
-    // 初期化処理
-    function initialize() {
-      for (let i = 0; i < populationNumber; i++) {
-        field.addChild(createNode(0, 0));
-      }
-    }
-
-    // 次の人工の読み込み
-    function updatePopulation() {
-      if (populationSeq.length > 0) {
-        currentPopulation = populationSeq.shift();
-        return true;
-      } else {
-        return false;
-      }
-    }
-
-    // 位置の更新
-    function updateLocations() {
-      currentPopulation.forEach((v, i) => {
-        const n = field.getChildAt(i)
-        n.x = v[0];
-        n.y = v[1];
-      })
-    }
-
-    // 人工の更新と位置の更新
-    function stepLocations() {
-      if (updatePopulation()) {
-        updateLocations();
-      }
-    }
-
-    //-------------------
-    // 初期化処理
-    //-------------------
-    initialize();
-    app.ticker.stop()
-    app.ticker.add(loop)
-
-    //-------------------
-    // アニメーション処理
-    //-------------------
-    let dt = 0;
-    function loop(delta) {
-      log.text = `${dt}`;
-      if (dt >= vue.interval) {
-        dt = 0;
-        stepLocations();
-      }
-      dt += delta;
-    }
-
-    //-------------------
-    // イベント処理
-    //-------------------
-    // load button
-    ldBtn.addEventListener('click', async event => {
-      app.ticker.stop();
-
-      populationSeq = []
-
-      for (let i = 0; i < vue.selected.count; i++) {
-        const res = await axios.get(`/data/${vue.selected.name}/${i}.json`);
-        populationSeq.push(res.data);
-      }
-
-      updatePopulation();
-      updateLocations();
-      app.ticker.update();
-
-      vue.isLoaded = true;
-    })
-
-    // pause/resume button
-    prBtn.addEventListener('click', event => {
-      if (app.ticker.started) {
-        app.ticker.stop();
-      } else {
-        app.ticker.start();
-      }
-    })
-
-    // step button
-    stepBtn.addEventListener('click', event => {
-      stepLocations();
-      app.ticker.update();
-    })
-
-    window.addEventListener('beforeunload', event => {
-      field.removeChildren();
-      console.log('reload');
-    }, false);
-
   </script>
 </body>
 
